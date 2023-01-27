@@ -1,0 +1,12 @@
+[package]
+name = "srrir"
+version = "0.0.1"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+threadpool = "1.8.1"
+sha256 = "1.1.1"
+walkdir = "2.3.2"
+num_cpus = "1.15.0"
