@@ -16,6 +16,8 @@ struct Samples {
     notes: String,
     sample_dir_path: String,
     fixed: i32,
+    total_before: i32,
+    total_now: i32,
 }
 
 pub fn core() {
@@ -26,6 +28,8 @@ pub fn core() {
         notes: String::new(),
         sample_dir_path: String::new(),
         fixed: 0,
+        total_before: 0,
+        total_now: 0,
     };
     println!("\nStart configuring...\n");
     print!("Dir path?    ");
@@ -35,7 +39,7 @@ pub fn core() {
     let sample_path = Path::new(&samples.sample_dir_path);
     let metadata = fs::metadata(sample_path).unwrap();
     if metadata.is_dir() == false {
-        println!("Invalid path! It should be a dir!");
+        println!("Invalid path! It should be a Dir!");
     }
     print!("Anti-Virus name?    ");
     io::stdout().flush().unwrap();
@@ -46,9 +50,38 @@ pub fn core() {
     io::stdin().read_line(&mut samples.notes).unwrap();
     samples.notes = samples.notes.trim().to_string();
     if samples.notes.is_empty() == false {
-        samples.notes = format!("Notes: {}", samples.notes);
+        samples.notes = format!("Notes: {}\n", samples.notes);
     }
     println!("Configuration completed. Starting to prepare for it...");
+    let pool2 = pool.clone();
+    prepare_threads(&mut samples, pool);
+    println!("\nPreparation completed. Now you can start to scan the samples with your Antivirus.\nIf the Antivirus finishes scanning, you can press \"ENTER\" to start the statistics.");
+    let mut enterer = String::new();
+    io::stdin().read_line(&mut enterer).unwrap();
+    counter(&mut samples, pool2);
+    println!("Statistics completed.\n");
+    let bmn = samples.total_before - samples.total_now;
+    let ttd = bmn + samples.fixed;
+    let output_data = format!(
+        "Antivirus name: {}\nSample size: {}\nTotal detections: {}\nThe total detections include:\n  -Deleted: {}\n  -Fixed: {}\nMissed: {}\nAccuracy: {:.4}%\n{}", 
+        samples.antivir_name,
+        samples.total_before, 
+        ttd, 
+        bmn, 
+        samples.fixed, 
+        samples.total_now, 
+        100 * ttd / samples.total_before,
+        samples.notes
+    );
+    println!("{}", output_data);
+}
+
+fn computes(paths: PathBuf) -> (PathBuf, String) {
+    let path2 = paths.clone();
+    (paths, try_digest(Path::new(&path2)).unwrap())
+}
+
+fn prepare_threads(samples: &mut Samples, pool: ThreadPool) {
     let (sendd, recc) = channel();
     for entry in WalkDir::new(&samples.sample_dir_path)
         .follow_links(true)
@@ -63,18 +96,16 @@ pub fn core() {
         });
     }
     drop(sendd);
-    let mut total_before: i32 = 0;
     for this in recc.iter() {
         let (paths, sha256) = this;
         samples.prepare_data.insert(paths, sha256);
-        total_before += 1;
+        samples.total_before += 1;
     }
-    // println!("{:#?}", total_before);
-    println!("\nPreparation completed. Now you can start to scan the samples with your Antivirus.\nIf the Antivirus finishes scanning, you can press \"ENTER\" to start the statistics.");
-    let mut enterer = String::new();
-    io::stdin().read_line(&mut enterer).unwrap();
+}
+
+fn counter(samples: &mut Samples, pool: ThreadPool) {
     let (sendd2, recc2) = channel();
-    for entry in WalkDir::new(samples.sample_dir_path)
+    for entry in WalkDir::new(&samples.sample_dir_path)
         .follow_links(true)
         .into_iter()
         .filter_map(|e| e.ok())
@@ -87,9 +118,9 @@ pub fn core() {
         });
     }
     drop(sendd2);
-    let mut total_now = 0;
     for this in recc2.iter() {
-        total_now += 1;
+        samples.total_now += 1;
+        println!("{}", samples.total_now);
         let (paths, sha256) = this;
         let sha_before = samples.prepare_data.get(&paths).unwrap();
         if sha_before != &sha256 {
@@ -97,24 +128,4 @@ pub fn core() {
             samples.fixed += 1;
         }
     }
-    println!("Statistics completed.\n");
-    let bmn = total_before - total_now;
-    let ttd = bmn + samples.fixed;
-    let output_data = format!(
-        "Antivirus name: {}\nSample size: {}\nTotal detections: {}\nThe total detections include:\n  -Deleted: {}\n  -Fixed: {}\nMissed: {}\nAccuracy: {:.4}%\n{}", 
-        samples.antivir_name,
-        total_before, 
-        ttd, 
-        bmn, 
-        samples.fixed, 
-        total_now, 
-        100 * ttd / total_before,
-        samples.notes
-    );
-    println!("{}", output_data);
-}
-
-fn computes(paths: PathBuf) -> (PathBuf, String) {
-    let path2 = paths.clone();
-    (paths, try_digest(Path::new(&path2)).unwrap())
 }
