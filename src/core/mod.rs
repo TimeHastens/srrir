@@ -6,6 +6,7 @@ use std::{
     io::{self, Write},
     path::Path,
     path::PathBuf,
+    time::Instant,
 };
 use threadpool::ThreadPool;
 use walkdir::WalkDir;
@@ -53,13 +54,15 @@ pub fn core() {
         samples.notes = format!("Notes: {}\n", samples.notes);
     }
     println!("Configuration completed. Starting to prepare for it...");
+    let timer = Instant::now();
     let pool2 = pool.clone();
     prepare_threads(&mut samples, pool);
-    println!("\nPreparation completed. Now you can start to scan the samples with your Antivirus.\nIf the Antivirus finishes scanning, you can press \"ENTER\" to start the statistics.");
+    println!("\nPreparation completed. Now you can start to scan the samples with your Antivirus.\nIf the Antivirus finishes scanning, you can press \"ENTER\" to start the statistics.\nUsed Time: {}ms", timer.elapsed().as_millis());
     let mut enterer = String::new();
     io::stdin().read_line(&mut enterer).unwrap();
+    let timer2 = Instant::now();
     counter(&mut samples, pool2);
-    println!("Statistics completed.\n");
+    println!("Statistics completed. Used Time: {}ms\n", timer2.elapsed().as_millis());
     let bmn = samples.total_before - samples.total_now;
     let ttd = bmn + samples.fixed;
     let output_data = format!(
@@ -120,7 +123,6 @@ fn counter(samples: &mut Samples, pool: ThreadPool) {
     drop(sendd2);
     for this in recc2.iter() {
         samples.total_now += 1;
-        println!("{}", samples.total_now);
         let (paths, sha256) = this;
         let sha_before = samples.prepare_data.get(&paths).unwrap();
         if sha_before != &sha256 {
